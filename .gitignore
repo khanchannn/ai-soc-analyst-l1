@@ -1,0 +1,16 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data, logs, and generated output
+n8n-data/
+ollama-data/
+logs/
+*.log
+*.pcap
+execution-data/

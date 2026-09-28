@@ -1,0 +1,1126 @@
+{
+  "name": "AI SOC Analyst L1 - redacted lab reference",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "qwen3:8b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        1856
+      ],
+      "id": "f7a22464-4dc8-4e45-99bf-0c15b8af1c8c",
+      "name": "Ollama Chat Model"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "options": {},
+        "files": {
+          "values": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        2768,
+        1216
+      ],
+      "id": "42bfcda5-beb7-4528-ac8b-ad63e367927b",
+      "name": "Discord",
+      "webhookId": "aa35d182-fad7-4d44-bd04-fa7829dd102a",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "command": "={{ $('Prepare SSH Log Command For Linux Endpoints').item.json.ssh_command }}"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1376
+      ],
+      "id": "b40b7688-383c-4834-ac56-37d78e55128d",
+      "name": "n8n-VM"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1056,
+        1648
+      ],
+      "id": "a94a69e3-5130-4003-828a-730cd02131c1",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "data.attributes.last_analysis_stats"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        400,
+        768
+      ],
+      "id": "a5bbc74c-ed0f-4d54-ac1a-34e2e01c7150",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.virustotal.com/api/v3/ip_addresses/' + ($json.body.data.srcip || $json.body._original?.data?.srcip) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "virusTotalApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        768
+      ],
+      "id": "12746d17-a962-400f-b089-dbfe782cea1b",
+      "name": "VirusTotal IP Check"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "55496601-c2dd-4115-bc96-0271147c2398",
+              "name": "stdout",
+              "value": "={{ $json.stdout }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        256,
+        1376
+      ],
+      "id": "1adef0c0-9803-4918-8f77-03ae8f50f991",
+      "name": "Last 100 Log lines"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen3:8b",
+          "mode": "list",
+          "cachedResultName": "qwen3:8b"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a log parser. Analyze these system logs and extract ONLY security events related to IP {{ $('Normalize Alert Data1').item.json.body.data.srcip }}\n\n## Logs\n{{ $json.stdout }}\n\n## Output (max 1500 chars)\n\n**Source Ip \n**Failed Logins:** [count, usernames]\n**Successful Logins:** [yes/no, when]\n**Ports Targeted:** [list]\n**Attack Pattern:** [brute force/scan/exploit/other]\n**First/Last Seen:** [timestamps]\n**Severity:** [Low/Medium/High]\n**Key Log Lines:** [2-3 most important entries]\n\nBe specific with numbers and timestamps. If no relevant logs, say \"NONE\".\n\nDo not summarize, triage."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.ollama",
+      "typeVersion": 1,
+      "position": [
+        480,
+        1376
+      ],
+      "id": "b1395800-2248-4550-a30f-0c6d1aad88a8",
+      "name": "AI: Summarize Logs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Extract data from merged inputs\nconst stats = items.find(item => item.json.last_analysis_stats);\nconst analysis = items.find(item => item.json.content);\nconst enrichmentItem = items.find(item => item.json.enrichment);\n\n// Get enrichment data\nconst enrichment = enrichmentItem?.json?.enrichment || {};\n\nreturn [{\n  json: {\n    // VirusTotal stats\n    virustotal_stats: stats?.json.last_analysis_stats || [{\n      malicious: 0, suspicious: 0, harmless: 0, undetected: 0, timeout: 0\n    }],\n    \n    // AbuseIPDB data\n    abuseipdb: enrichment.abuseipdb || {\n      confidence_score: 0,\n      total_reports: 0,\n      isp: 'N/A',\n      usage_type: 'N/A'\n    },\n    \n    // Combined threat assessment\n    combined_threat_score: enrichment.combined_threat_score || 0,\n    threat_level: enrichment.threat_level || 'UNKNOWN',\n    \n    // Log analysis\n    log_analysis: analysis?.json.content || \"No analysis available\",\n    \n    // Original alert data\n    body: stats?.json.body || analysis?.json.body\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        1648
+      ],
+      "id": "c6d6e5af-b750-480f-b922-112b04c08575",
+      "name": "Combine Data For Report"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a SOC analyst Expert. Analyze this security alert and provide a CONCISE incident report (2000 characters).\n\n## Input Data\nTime: {{ $('Normalize Alert Data1').first().json.body.timestamp }}\nAgent IP: {{ $('Normalize Alert Data1').first().json.body.agent.ip }}\nAgent Name: {{ $('Normalize Alert Data1').first().json.body.agent.name }}\nOS: {{ $('Normalize Alert Data1').first().json.body.agent.os }}\nLast 100 line Logs Summary From the system: {{ $json.log_analysis }}\n\nAttack Information (if present):\nRule level: {{ $('Normalize Alert Data1').first().json.body.rule.level }}\nRule Description: {{ $('Normalize Alert Data1').first().json.body.rule.description }}\nMITRE Info: {{ $('Normalize Alert Data1').first().json.body.rule.mitre }}\nSource IP: {{ $('Normalize Alert Data1').first().json.body.data.srcip }}\nProtocol: {{ $('Normalize Alert Data1').first().json.body.data.protocol }}\nURL: {{ $('Normalize Alert Data1').first().json.body.data.url }}\nCountry: {{ $('Normalize Alert Data1').first().json.body.GeoLocation.country_name }}\nFull Log: {{ $('Normalize Alert Data1').first().json.body.full_log }}\n\nMULTI-SOURCE THREAT INTELLIGENCE:\nCombined Threat Score: {{ $json.combined_threat_score }}/100 ({{ $json.threat_level }})\n\nVirusTotal:\n -Malicious: {{ $json.virustotal_stats[0].malicious }}\n -Suspicious: {{ $json.virustotal_stats[0].suspicious }}\n -Undetected: {{ $json.virustotal_stats[0].undetected }}\n -Harmless: {{ $json.virustotal_stats[0].harmless }}\n\nAbuseIPDB:\n -Confidence Score: {{ $json.abuseipdb.confidence_score }}%\n -Total Reports: {{ $json.abuseipdb.total_reports }}\n -ISP: {{ $json.abuseipdb.isp }}\n -Usage Type: {{ $json.abuseipdb.usage_type }}\n\n## Task\n1. First determine if this is a false positive\n2. If real threat, analyze and create incident report\n3. Use the Combined Threat Score to weight your assessment\n\n## Report Format (Keep Brief)\n\n🔴/🟡/🟢 THREAT LEVEL: [CRITICAL/HIGH/MEDIUM/LOW]\n\nFALSE POSITIVE? [Yes/No - explain in 1 line]\n\nTHREAT SUMMARY (2-3 lines)\nWhat happened, attack type, severity (1-10)\n\nMULTI-SOURCE INTEL\n- VirusTotal verdict and key findings\n- AbuseIPDB reputation and report history\n- Combined assessment rationale\n\nKEY FINDINGS\n- Source IP role and threat\n- Attack method and payload\n- MITRE technique used\n\nIMMEDIATE ACTIONS (3-4 bullet points max)\nMost critical steps to take now\n\nRECOMMENDATIONS (2-3 bullet points)\nShort and long-term improvements\n\nCONCLUSION (1-2 lines)\nFinal assessment\n\nKeep it concise, actionable, and technical. Use short sentences. No fluff.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1824,
+        1648
+      ],
+      "id": "1a06831c-5124-46d2-b672-b95ed957ddfd",
+      "name": "AI: SOC Incident Report",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1968,
+        1856
+      ],
+      "id": "58937854-fdb7-4ebd-9ddd-785223b1de9d",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.agent.os }}",
+                    "rightValue": "linux",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "52913d78-5291-4c92-b0bb-f93ea6412b35"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "292111e5-613e-474b-af79-d3933c0e2cda",
+                    "leftValue": "={{ $json.body._original.full_alert.rule.groups }}",
+                    "rightValue": "=vulnerability-detector",
+                    "operator": {
+                      "type": "array",
+                      "operation": "contains",
+                      "rightType": "any"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1184,
+        1344
+      ],
+      "id": "23ab8de8-ae7e-49b3-acf9-33cd6eff0477",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize webhook data structure\nconst input = $input.item.json;\n\n// Helper function to safely get nested values\nfunction getNestedValue(obj, path) {\n  return path.split('.').reduce((current, key) => current?.[key], obj);\n}\n\n// Check if data is under body.full_alert or directly under body\nconst isFullAlert = input.body?.full_alert !== undefined;\n\n// Create normalized structure\nconst normalized = {\n  body: {\n    // Timestamp\n    timestamp: isFullAlert \n      ? input.body.full_alert.timestamp \n      : input.body.timestamp,\n    \n    // Agent info\n    agent: {\n      ip: isFullAlert \n        ? input.body.full_alert.agent?.ip \n        : input.body.agent?.ip,\n      name: isFullAlert \n        ? input.body.full_alert.agent?.name \n        : input.body.agent?.name,\n      id: isFullAlert \n        ? input.body.full_alert.agent?.id \n        : input.body.agent?.id,\n      labels: {\n        group: isFullAlert \n          ? input.body.full_alert.agent?.labels?.group \n          : input.body.agent?.labels?.group\n      }\n    },\n    \n    // Rule info\n    rule: {\n      level: isFullAlert \n        ? input.body.full_alert.rule?.level \n        : input.body.rule?.level,\n      description: isFullAlert \n        ? input.body.full_alert.rule?.description \n        : input.body.rule?.description,\n      id: isFullAlert \n        ? input.body.full_alert.rule?.id \n        : input.body.rule?.id,\n      mitre: {\n        id: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.id \n          : input.body.rule?.mitre?.id,\n        tactic: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.tactic \n          : input.body.rule?.mitre?.tactic,\n        technique: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.technique \n          : input.body.rule?.mitre?.technique\n      }\n    },\n    \n    // Attack data\n    data: {\n      srcip: isFullAlert \n        ? input.body.full_alert.data?.srcip \n        : input.body.data?.srcip,\n      protocol: isFullAlert \n        ? input.body.full_alert.data?.protocol \n        : input.body.data?.protocol,\n      url: isFullAlert \n        ? input.body.full_alert.data?.url \n        : input.body.data?.url,\n      dstip: isFullAlert \n        ? input.body.full_alert.data?.dstip \n        : input.body.data?.dstip,\n      dstport: isFullAlert \n        ? input.body.full_alert.data?.dstport \n        : input.body.data?.dstport\n    },\n    \n    // Log info\n    full_log: isFullAlert \n      ? input.body.full_alert.full_log \n      : input.body.full_log,\n    \n    // Predecoder\n    predecoder: {\n      program_name: isFullAlert \n        ? input.body.full_alert.predecoder?.program_name \n        : input.body.predecoder?.program_name,\n      timestamp: isFullAlert \n        ? input.body.full_alert.predecoder?.timestamp \n        : input.body.predecoder?.timestamp\n    },\n    \n    // GeoLocation\n    GeoLocation: input.body.GeoLocation || {\n      country_name: \"Unknown\",\n      city_name: \"Unknown\"\n    },\n    \n    // Keep original structure as backup\n    _original: input.body,\n    _structure_type: isFullAlert ? \"full_alert\" : \"direct\"\n  }\n};\n\nreturn { json: normalized };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        1344
+      ],
+      "id": "5172c9c1-cc5d-4d5e-86e0-63f3e35b1b2b",
+      "name": "Normalize Alert Data1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize webhook data structure\nconst input = $input.item.json;\n\n// Helper function to safely get nested values\nfunction getNestedValue(obj, path) {\n  return path.split('.').reduce((current, key) => current?.[key], obj);\n}\n\n// Helper function to detect OS from Wazuh alert\nfunction detectOS(alertData, isFullAlert) {\n  // Try to get OS from agent.os field (MOST RELIABLE)\n  const agentOS = isFullAlert \n    ? alertData.body.full_alert?.agent?.os?.platform || alertData.body.full_alert?.agent?.os?.name\n    : alertData.body.agent?.os?.platform || alertData.body.agent?.os?.name;\n  \n  if (agentOS) {\n    const os = agentOS.toLowerCase();\n    if (os.includes('windows')) return 'windows';\n    if (os.includes('linux')) return 'linux';\n    if (os.includes('darwin') || os.includes('macos') || os.includes('mac os')) return 'macos';\n  }\n  \n  // Try decoder field\n  const decoder = isFullAlert \n    ? alertData.body.full_alert?.decoder?.name\n    : alertData.body.decoder?.name;\n  \n  if (decoder) {\n    const dec = decoder.toLowerCase();\n    if (dec.includes('windows') || dec.includes('eventchannel') || dec.includes('eventlog')) return 'windows';\n    if (dec.includes('syslog') || dec.includes('linux')) return 'linux';\n    if (dec.includes('macos') || dec.includes('darwin')) return 'macos';\n  }\n  \n  // Try to detect from predecoder.program_name\n  const programName = isFullAlert \n    ? alertData.body.full_alert?.predecoder?.program_name\n    : alertData.body.predecoder?.program_name;\n  \n  if (programName) {\n    const program = programName.toLowerCase();\n    \n    // Windows indicators\n    if (program.includes('microsoft-windows') || \n        program.includes('svchost') || \n        program.includes('system32') ||\n        program.includes('windows') ||\n        program === 'system' ||\n        program === 'security' ||\n        program === 'application' ||\n        program === 'wineventlog' ||\n        program.includes('powershell') ||\n        program.includes('mssql') ||\n        program.includes('iis') ||\n        program.includes('winlogon') ||\n        program.includes('lsass') ||\n        program.includes('services.exe')) {\n      return 'windows';\n    }\n    \n    // Linux indicators\n    if (program === 'sshd' || \n        program === 'sudo' || \n        program === 'systemd' ||\n        program === 'kernel' ||\n        program === 'cron' ||\n        program === 'apache2' ||\n        program === 'nginx' ||\n        program === 'postfix' ||\n        program === 'dovecot' ||\n        program === 'vsftpd' ||\n        program === 'auditd' ||\n        program === 'rsyslogd' ||\n        program === 'dbus' ||\n        program === 'polkitd' ||\n        program === 'firewalld' ||\n        program === 'named' ||\n        program === 'dhcpd' ||\n        program === 'mysql' ||\n        program === 'postgresql') {\n      return 'linux';\n    }\n    \n    // macOS indicators\n    if (program.includes('com.apple.') ||\n        program === 'launchd' ||\n        program === 'securityd' ||\n        program === 'installd' ||\n        program.includes('cfprefsd')) {\n      return 'macos';\n    }\n  }\n  \n  // Try to detect from full_log content\n  const fullLog = isFullAlert \n    ? alertData.body.full_alert?.full_log\n    : alertData.body.full_log;\n  \n  if (fullLog) {\n    const log = fullLog.toLowerCase();\n    \n    // Windows patterns\n    if (log.includes('c:\\\\windows') || \n        log.includes('c:\\\\program files') ||\n        log.includes('\\\\windows\\\\') ||\n        log.includes('eventlog') || \n        log.includes('microsoft-windows') ||\n        log.includes('.exe') ||\n        log.includes('.dll') ||\n        log.includes('hkey_') ||\n        log.includes('registry') ||\n        log.includes('\\\\system32\\\\') ||\n        log.includes('\\\\syswow64\\\\') ||\n        log.includes('eventchannel') ||\n        log.includes('powershell.exe') ||\n        log.includes('cmd.exe') ||\n        log.includes('taskmgr') ||\n        log.match(/[a-z]:\\\\/i)) {  // Drive letter pattern\n      return 'windows';\n    }\n    \n    // Linux patterns\n    if (log.includes('/var/log') || \n        log.includes('/etc/') || \n        log.includes('/usr/') ||\n        log.includes('/home/') ||\n        log.includes('/root/') ||\n        log.includes('/bin/') ||\n        log.includes('/sbin/') ||\n        log.includes('/opt/') ||\n        log.includes('/tmp/') ||\n        log.includes('bash') ||\n        log.includes('sh:') ||\n        log.includes('/dev/') ||\n        log.includes('/proc/') ||\n        log.includes('/sys/') ||\n        log.includes('systemctl') ||\n        log.includes('apt-get') ||\n        log.includes('yum install') ||\n        log.includes('dnf install') ||\n        log.includes('zypper') ||\n        log.includes('pacman') ||\n        log.includes('systemd[') ||\n        log.includes('kernel:')) {\n      return 'linux';\n    }\n    \n    // macOS patterns\n    if (log.includes('/library/') || \n        log.includes('/applications/') ||\n        log.includes('com.apple.') ||\n        log.includes('darwin') ||\n        log.includes('/users/') ||\n        log.includes('launchd') ||\n        log.includes('.app/') ||\n        log.includes('/system/library/') ||\n        log.includes('brew install') ||\n        log.includes('osascript')) {\n      return 'macos';\n    }\n  }\n  \n  // Check rule groups (some rules are OS-specific)\n  const ruleGroups = isFullAlert \n    ? alertData.body.full_alert?.rule?.groups\n    : alertData.body.rule?.groups;\n  \n  if (ruleGroups && Array.isArray(ruleGroups)) {\n    const groups = ruleGroups.join(',').toLowerCase();\n    if (groups.includes('windows')) return 'windows';\n    if (groups.includes('linux')) return 'linux';\n    if (groups.includes('macos') || groups.includes('mac')) return 'macos';\n  }\n  \n  // Check syscheck (file integrity monitoring) paths\n  const syscheckPath = isFullAlert \n    ? alertData.body.full_alert?.syscheck?.path\n    : alertData.body.syscheck?.path;\n  \n  if (syscheckPath) {\n    const path = syscheckPath.toLowerCase();\n    if (path.includes('c:\\\\') || path.includes('\\\\windows\\\\')) return 'windows';\n    if (path.startsWith('/') && !path.includes('/library/') && !path.includes('/applications/')) return 'linux';\n    if (path.includes('/library/') || path.includes('/applications/')) return 'macos';\n  }\n  \n  // Check location field (some Wazuh integrations include this)\n  const location = isFullAlert \n    ? alertData.body.full_alert?.location\n    : alertData.body.location;\n  \n  if (location) {\n    const loc = location.toLowerCase();\n    if (loc.includes('eventchannel') || loc.includes('eventlog')) return 'windows';\n    if (loc.includes('syslog') || loc.includes('/var/log')) return 'linux';\n    if (loc.includes('macos.log') || loc.includes('unified.log')) return 'macos';\n  }\n  \n  return 'unknown';\n}\n\n// Check if data is under body.full_alert or directly under body\nconst isFullAlert = input.body?.full_alert !== undefined;\n\n// Detect OS\nconst detectedOS = detectOS(input, isFullAlert);\n\n// Create normalized structure\nconst normalized = {\n  body: {\n    // Timestamp\n    timestamp: isFullAlert \n      ? input.body.full_alert.timestamp \n      : input.body.timestamp,\n    \n    // Agent info\n    agent: {\n      ip: isFullAlert \n        ? input.body.full_alert.agent?.ip \n        : input.body.agent?.ip,\n      name: isFullAlert \n        ? input.body.full_alert.agent?.name \n        : input.body.agent?.name,\n      id: isFullAlert \n        ? input.body.full_alert.agent?.id \n        : input.body.agent?.id,\n      labels: {\n        group: isFullAlert \n          ? input.body.full_alert.agent?.labels?.group \n          : input.body.agent?.labels?.group\n      },\n      os: detectedOS  // Added OS detection\n    },\n    \n    // Rule info\n    rule: {\n      level: isFullAlert \n        ? input.body.full_alert.rule?.level \n        : input.body.rule?.level,\n      description: isFullAlert \n        ? input.body.full_alert.rule?.description \n        : input.body.rule?.description,\n      id: isFullAlert \n        ? input.body.full_alert.rule?.id \n        : input.body.rule?.id,\n      mitre: {\n        id: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.id \n          : input.body.rule?.mitre?.id,\n        tactic: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.tactic \n          : input.body.rule?.mitre?.tactic,\n        technique: isFullAlert \n          ? input.body.full_alert.rule?.mitre?.technique \n          : input.body.rule?.mitre?.technique\n      }\n    },\n    \n    // Attack data\n    data: {\n      srcip: isFullAlert \n        ? input.body.full_alert.data?.srcip \n        : input.body.data?.srcip,\n      protocol: isFullAlert \n        ? input.body.full_alert.data?.protocol \n        : input.body.data?.protocol,\n      url: isFullAlert \n        ? input.body.full_alert.data?.url \n        : input.body.data?.url,\n      dstip: isFullAlert \n        ? input.body.full_alert.data?.dstip \n        : input.body.data?.dstip,\n      dstport: isFullAlert \n        ? input.body.full_alert.data?.dstport \n        : input.body.data?.dstport\n    },\n    \n    // Log info\n    full_log: isFullAlert \n      ? input.body.full_alert.full_log \n      : input.body.full_log,\n    \n    // Predecoder\n    predecoder: {\n      program_name: isFullAlert \n        ? input.body.full_alert.predecoder?.program_name \n        : input.body.predecoder?.program_name,\n      timestamp: isFullAlert \n        ? input.body.full_alert.predecoder?.timestamp \n        : input.body.predecoder?.timestamp\n    },\n    \n    // GeoLocation\n    GeoLocation: input.body.GeoLocation || {\n      country_name: \"Unknown\",\n      city_name: \"Unknown\"\n    },\n    \n    // Keep original structure as backup\n    _original: input.body,\n    _structure_type: isFullAlert ? \"full_alert\" : \"direct\"\n  }\n};\n\nreturn { json: normalized };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1552,
+        1296
+      ],
+      "id": "6ec1bf0b-8aec-4474-ba0f-c6b0f50b1ae4",
+      "name": "Detect OS Name"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Webhook của n8n thường đặt nội dung POST trong $json.body.\n// Nếu alert đã nằm trực tiếp trong $json thì sử dụng $json.\nconst rawAlert = $json.body ?? $json;\n\n// Lấy một vài trường để hiển thị ngắn gọn trên Discord\nconst ruleId = rawAlert.rule?.id ?? \"N/A\";\nconst ruleLevel = rawAlert.rule?.level ?? \"N/A\";\nconst ruleDescription = rawAlert.rule?.description ?? \"No description\";\n\nconst agentName = rawAlert.agent?.name ?? \"Unknown agent\";\nconst agentIp = rawAlert.agent?.ip ?? \"N/A\";\nconst timestamp = rawAlert.timestamp ?? new Date().toISOString();\n\nconst fileName = `wazuh-alert-${ruleId}-${Date.now()}.json`;\n\nconst discordMessage = [\n  \"🚨 **RAW WAZUH ALERT**\",\n  `**Rule:** ${ruleId} - ${ruleDescription}`,\n  `**Level:** ${ruleLevel}`,\n  `**Agent:** ${agentName}`,\n  `**Agent IP:** ${agentIp}`,\n  `**Time:** ${timestamp}`,\n  \"\",\n  \"📎 Full original alert is attached as a JSON file.\"\n].join(\"\\n\");\n\nreturn [\n  {\n    json: {\n      discordMessage,\n      fileName,\n\n      // Giữ toàn bộ nội dung alert gốc\n      rawAlertText: JSON.stringify(rawAlert, null, 2)\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        2048
+      ],
+      "id": "e16cf8f7-c6ab-45a3-aee6-2cc91a5166a0",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "335ce583-c736-4254-b087-c406f2685554",
+              "leftValue": "={{ $json.last_analysis_stats[0].malicious }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "da2f8256-ddd2-479e-bc7c-0c0bd5dfc107",
+              "leftValue": "={{ $json.last_analysis_stats[0].suspicious }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        672
+      ],
+      "id": "7967c344-c5b1-4a85-9587-f764cd8d11ea",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=New Vulnerabity",
+        "options": {},
+        "files": {
+          "values": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        816,
+        2048
+      ],
+      "id": "43c62e35-3f3e-4615-8543-fc362156dbb3",
+      "name": "Discord1",
+      "webhookId": "54dad9ea-07ce-49ec-9f7d-090617a5d61b"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "rawAlertText",
+        "options": {
+          "fileName": "={{ $json.fileName }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        592,
+        2048
+      ],
+      "id": "fd0cc6e5-df46-4f96-9816-66cb065acd91",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ⚙️ CONFIGURATION CENTER\n// Edit these values to configure the entire workflow.\n// This is the ONLY node you need to modify.\n\nconst config = {\n  // --- Threat Intelligence ---\n  VT_MALICIOUS_THRESHOLD: 3,        // Min VT malicious detections to trigger block\n  VT_SUSPICIOUS_THRESHOLD: 2,       // Min VT suspicious detections to flag\n  ABUSEIPDB_ENABLED: true,          // Enable AbuseIPDB enrichment (requires API key)\n\n  // --- Auto-Blocking ---\n  BLOCK_ENABLED: false,              // Master toggle for auto-blocking IPs\n  AUTO_BLOCK_MIN_LEVEL: 14,         // Minimum Wazuh rule level to auto-block\n  WHITELIST_IPS: \"192.0.2.10/8,192.0.2.10/12,192.0.2.10/16,192.0.2.10,192.0.2.10,192.0.2.10\",\n\n  // --- Alert Deduplication ---\n  DEDUP_WINDOW_MINUTES: 15,         // Cooldown window for duplicate alerts\n\n  // --- Notifications (MULTI-CHANNEL) ---\n  // Comma-separated list. EVERY channel listed here receives the report,\n  // and they are all delivered at the same time (in parallel).\n  // Options: discord | slack | telegram | email | gmail\n  // (\"email\" and \"gmail\" both switch on the same HTML email branch - see below)\n  //   \"discord\"                       -> Discord only\n  //   \"discord,slack\"                 -> both, simultaneously\n  //   \"discord,slack,telegram,email\"  -> all four, simultaneously\n  NOTIFICATION_CHANNELS: \"discord,telegram\",\n\n  // Per-channel settings (only fill in the channels you enabled above)\n  // SLACK_WEBHOOK_URL:  \"https://hooks.slack.com/services/YOUR/WEBHOOK/URL\",\n  TELEGRAM_BOT_TOKEN: \"REDACTED_TELEGRAM_BOT_TOKEN\",\n  TELEGRAM_CHAT_ID:   \"6226060931\",\n  // EMAIL_FROM:         \"analyst@example.invalid\",\n  // EMAIL_TO:           \"analyst@example.invalid\",\n  // Discord uses the webhook credential attached to the \"Discord\" node.\n\n  // --- Case Management ---\n  // THEHIVE_ENABLED: false,           // Enable TheHive alert creation\n  // THEHIVE_URL: \"http://your-thehive:9000\",\n\n  // // --- Audit Logging ---\n  // LOG_STORAGE_ENABLED: true,        // Log incidents to Google Sheets\n\n  // --- AI Model ---\n  OLLAMA_MODEL: \"qwen3:8b\",   // Change to your preferred Ollama model\n\n  // --- Severity Routing ---\n  SEVERITY_HIGH_THRESHOLD: 14,      // Level 14+ gets escalated response\n  MAX_LOG_LINES: 200                // Max log lines to pull from endpoints\n};\n\n// --- Derived: expand NOTIFICATION_CHANNELS into per-channel flags ------------\n// The \"📢 Notification Router\" switch reads these flags and fires EVERY\n// matching output at once, so multiple channels are delivered together.\nconst selected = String(config.NOTIFICATION_CHANNELS ?? config.NOTIFICATION_CHANNEL ?? '')\n  .toLowerCase()\n  .split(',')\n  .map(c => c.trim())\n  .filter(Boolean);\n\nconfig.NOTIFY = {\n  discord:  selected.includes('discord'),\n  // slack:    selected.includes('slack'),\n  telegram: selected.includes('telegram'),\n  // 'email' and 'gmail' share one branch: 🎨 Build HTML Email renders the\n  // report, then BOTH 📧 Email Alert (SMTP) and 📧 Gmail Alert (OAuth) receive it.\n//   // Disable whichever transport node you are not using.\n//   email:    selected.includes('email') || selected.includes('gmail')\n};\n\n// Kept for backwards compatibility with anything reading the old single field\nconfig.NOTIFICATION_CHANNEL = selected[0] || '';\n\n// Pass through incoming alert data + attach config\nconst input = $input.item.json;\nreturn {\n  json: {\n    ...input,\n    config: config\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2368,
+        1312
+      ],
+      "id": "3ce9a617-2188-4294-91d6-75a4db37b707",
+      "name": "⚙️ CONFIGURATION"
+    },
+    {
+      "parameters": {
+        "jsCode": "// INPUT SANITIZATION - Prevents command injection attacks\nconst input = $input.item.json;\n\n// Helper: validate IPv4\nfunction isValidIPv4(ip) {\n  if (!ip || typeof ip !== 'string') return false;\n  const pattern = /^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$/;\n  const match = ip.match(pattern);\n  if (!match) return false;\n  return match.slice(1).every(octet => parseInt(octet) >= 0 && parseInt(octet) <= 255);\n}\n\n// Helper: validate IPv6\nfunction isValidIPv6(ip) {\n  if (!ip || typeof ip !== 'string') return false;\n  const pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?::(([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4})?$/;\n  return pattern.test(ip);\n}\n\n// Helper: sanitize string for shell commands\nfunction sanitizeForShell(str) {\n  if (!str || typeof str !== 'string') return '';\n  return str.replace(/[;&|`$(){}\\[\\]!#~<>\\\\\\'\\x22\\n\\r]/g, '');\n}\n\n// Get source IP from various possible locations\nconst body = input.body || {};\nconst srcip = body.data?.srcip \n  || body._original?.full_alert?.data?.srcip \n  || body.full_alert?.data?.srcip \n  || '';\nconst sanitizedSrcIp = sanitizeForShell(srcip);\nconst isValidIP = isValidIPv4(sanitizedSrcIp) || isValidIPv6(sanitizedSrcIp);\n\n// Validate agent name\nconst agentName = sanitizeForShell(body.agent?.name || '');\n\n// Validate rule level\nconst ruleLevel = parseInt(body.rule?.level) || 0;\n\n// Validate location path  \nconst location = sanitizeForShell(\n  body._original?.full_alert?.location || body.location || ''\n);\n\nconst warnings = [];\nif (!isValidIP && srcip) {\n  warnings.push('BLOCKED: Invalid/suspicious IP format: ' + srcip.substring(0, 50));\n}\nif (srcip !== sanitizedSrcIp) {\n  warnings.push('SANITIZED: Shell metacharacters removed from srcip');\n}\n\n// Pass ALL original data through + attach sanitization metadata\nreturn {\n  json: {\n    ...input,\n    _sanitized: {\n      srcip: isValidIP ? sanitizedSrcIp : '',\n      srcip_valid: isValidIP,\n      srcip_original: srcip,\n      agent_name: agentName,\n      rule_level: ruleLevel,\n      location: location,\n      validation_timestamp: new Date().toISOString(),\n      warnings: warnings\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2160,
+        1312
+      ],
+      "id": "780bfd4f-c21c-4749-8cbb-97bd989d7884",
+      "name": "🛡️ Input Sanitization"
+    },
+    {
+      "parameters": {
+        "jsCode": "// DEDUPLICATION / ALERT FATIGUE PREVENTION\n// Uses n8n static data to track recently processed alerts\nconst input = $input.item.json;\nconst staticData = $getWorkflowStaticData('global');\n\n// Read config from data stream (attached by Config node)\nconst DEDUP_WINDOW_MS = (input.config?.DEDUP_WINDOW_MINUTES || 15) * 60 * 1000;\n\n// Build dedup key\nconst srcip = input._sanitized?.srcip || input.body?.data?.srcip || 'unknown';\nconst ruleId = input.body?.rule?.id || 'unknown';\nconst agentName = input.body?.agent?.name || input._sanitized?.agent_name || 'unknown';\nconst dedupKey = `${srcip}_${ruleId}_${agentName}`;\n\n// Initialize tracking\nif (!staticData.processedAlerts) {\n  staticData.processedAlerts = {};\n}\n\nconst now = Date.now();\n\n// Clean expired entries\nfor (const key in staticData.processedAlerts) {\n  if (now - staticData.processedAlerts[key].lastSeen > DEDUP_WINDOW_MS) {\n    delete staticData.processedAlerts[key];\n  }\n}\n\n// Check duplicate\nconst existing = staticData.processedAlerts[dedupKey];\nif (existing && (now - existing.lastSeen) < DEDUP_WINDOW_MS) {\n  existing.count += 1;\n  existing.lastSeen = now;\n  \n  return {\n    json: {\n      ...input,\n      _dedup: {\n        action: 'SKIP',\n        reason: `Duplicate alert (seen ${existing.count}x in last ${Math.round(DEDUP_WINDOW_MS/60000)}min)`,\n        dedupKey, count: existing.count,\n        firstSeen: existing.firstSeen, lastSeen: now\n      }\n    }\n  };\n}\n\n// New alert - register and proceed\nstaticData.processedAlerts[dedupKey] = {\n  firstSeen: now, lastSeen: now, count: 1\n};\n\nreturn {\n  json: {\n    ...input,\n    _dedup: {\n      action: 'PROCESS',\n      dedupKey, count: 1, firstSeen: now\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1936,
+        1312
+      ],
+      "id": "f6cab933-58a2-499e-968a-792657892a1b",
+      "name": "🔄 Dedup / Cooldown"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "26b92dbc-4258-46a8-957a-bc682729e59b",
+              "leftValue": "={{ $json._dedup.action }}",
+              "rightValue": "PROCESS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1760,
+        1312
+      ],
+      "id": "5a2f309c-c896-491b-83b3-a3e193e049f1",
+      "name": "🚦 Dedup Filter"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.abuseipdb.com/api/v2/check",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ipAddress",
+              "value": "={{ $json.body.data.srcip }}"
+            },
+            {
+              "name": "maxAgeInDays",
+              "value": "90"
+            },
+            {
+              "name": "verbose"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        0,
+        480
+      ],
+      "id": "8ce8aa81-f949-4069-8094-4193dd858c4e",
+      "name": "🔍 AbuseIPDB Check"
+    },
+    {
+      "parameters": {
+        "jsCode": "// IP WHITELIST CHECK\nconst input = $input.item.json;\n\n// Get IP and config - try multiple sources\nconst ip = $('VirusTotal IP Check').first()?.json?.data?.id || '';\n\n// Config is in the data stream from the initial chain\n// We need to get it from Normalize Alert Data1 which preserved it\nlet whitelistStr = '192.0.2.10/8,192.0.2.10/12,192.0.2.10/16,192.0.2.10,192.0.2.10,192.0.2.10';\nlet blockEnabled = true;\n\ntry {\n  // Try to get config from any upstream node that has it\n  const configData = $('⚙️ CONFIGURATION').first()?.json?.config;\n  if (configData) {\n    whitelistStr = configData.WHITELIST_IPS || whitelistStr;\n    blockEnabled = configData.BLOCK_ENABLED ?? true;\n  }\n} catch(e) {\n  // Use defaults if config not reachable\n}\n\n// Parse CIDR\nfunction ipToLong(ip) {\n  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;\n}\n\nfunction isInCIDR(ip, cidr) {\n  if (!cidr.includes('/')) return ip === cidr;\n  const [network, bits] = cidr.split('/');\n  const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0;\n  return (ipToLong(ip) & mask) === (ipToLong(network) & mask);\n}\n\nconst whitelistEntries = whitelistStr.split(',').map(e => e.trim()).filter(Boolean);\nconst isWhitelisted = whitelistEntries.some(entry => {\n  try { return isInCIDR(ip, entry); } catch(e) { return false; }\n});\n\nreturn {\n  json: {\n    ...input,\n    _whitelist: {\n      ip,\n      is_whitelisted: isWhitelisted,\n      block_enabled: blockEnabled,\n      should_block: blockEnabled && !isWhitelisted,\n      matched_entry: isWhitelisted ? whitelistEntries.find(e => { try { return isInCIDR(ip, e); } catch(e2) { return false; } }) : null\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        624
+      ],
+      "id": "9088b784-f8c2-477b-b1de-181208ece553",
+      "name": "🛡️ Whitelist Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "378f1069-ee1b-4119-a21e-bd9d4b8f030c",
+              "leftValue": "={{ $json._whitelist.should_block }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1312,
+        624
+      ],
+      "id": "a20d4dab-857e-4091-bb71-bf007634e248",
+      "name": "Should Block IP?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// COMBINE ALL ENRICHMENT DATA into unified intel package\nconst items = $input.all();\n\n// After Merge, items[0] has both VT and AbuseIPDB fields merged\n// But depending on merge mode, they might be separate items\nlet vtStats = { malicious: 0, suspicious: 0, harmless: 0, undetected: 0 };\nlet abuseData = {};\n\nfor (const item of items) {\n  const d = item.json;\n  \n  // Detect VT data by its unique structure\n  if (d.data?.attributes?.last_analysis_stats) {\n    vtStats = d.data.attributes.last_analysis_stats;\n  }\n  \n  // Detect AbuseIPDB data by its unique structure\n  if (d.data?.abuseConfidenceScore !== undefined) {\n    abuseData = d.data;\n  }\n}\n\n// AbuseIPDB fields\nconst abuseScore = abuseData.abuseConfidenceScore || 0;\nconst abuseTotalReports = abuseData.totalReports || 0;\nconst abuseCountry = abuseData.countryCode || 'Unknown';\nconst abuseISP = abuseData.isp || 'Unknown';\nconst abuseDomain = abuseData.domain || 'Unknown';\nconst abuseUsageType = abuseData.usageType || 'Unknown';\n\n// Combined threat score (0-100)\nconst vtMalScore = Math.min(vtStats.malicious * 5, 50);\nconst abuseContrib = Math.min(abuseScore * 0.5, 50);\nconst combinedThreatScore = Math.min(vtMalScore + abuseContrib, 100);\n\nlet threatLevel = 'LOW';\nif (combinedThreatScore >= 70) threatLevel = 'CRITICAL';\nelse if (combinedThreatScore >= 50) threatLevel = 'HIGH';\nelse if (combinedThreatScore >= 30) threatLevel = 'MEDIUM';\n\nreturn [{\n  json: {\n    enrichment: {\n      virustotal: {\n        malicious: vtStats.malicious,\n        suspicious: vtStats.suspicious,\n        harmless: vtStats.harmless,\n        undetected: vtStats.undetected\n      },\n      abuseipdb: {\n        confidence_score: abuseScore,\n        total_reports: abuseTotalReports,\n        country: abuseCountry,\n        isp: abuseISP,\n        domain: abuseDomain,\n        usage_type: abuseUsageType\n      },\n      combined_threat_score: combinedThreatScore,\n      threat_level: threatLevel\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        480
+      ],
+      "id": "7493a855-0567-4f6c-a030-08f429a1522d",
+      "name": "🧩 Combine Enrichment"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "33bc26be-9061-4104-a20c-d60fb3273baa",
+                    "leftValue": "={{ $('⚙️ CONFIGURATION').first().json.config.NOTIFY.discord }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Discord"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7930f0fc-7286-4fcd-9e3d-e359fe148af2",
+                    "leftValue": "={{ $('⚙️ CONFIGURATION').first().json.config.NOTIFY.telegram }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Telegram"
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2304,
+        1456
+      ],
+      "id": "bbeaa973-1eb7-4536-8514-1346f4174572",
+      "name": "📢 Notification Router"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $('⚙️ CONFIGURATION').first().json.config.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('⚙️ CONFIGURATION').first().json.config.TELEGRAM_CHAT_ID, text: ('🚨 SOC Alert\\n' + $('AI: SOC Incident Report').item.json.output).slice(0, 3900), parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2768,
+        1552
+      ],
+      "id": "7792a476-17f1-4284-878e-0d5226dfed10",
+      "name": "📨 Telegram Alert",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        2320
+      ],
+      "id": "66cc5032-6433-4886-bb15-9fdf1ad88a68",
+      "name": "⚠️ Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ERROR HANDLER - Format error for notification\nconst error = $input.item.json;\n\nconst errorReport = {\n  title: '⚠️ SOC WORKFLOW ERROR',\n  workflow: error.workflow?.name || 'AI SOC Analyst',\n  node: error.execution?.lastNodeExecuted || 'Unknown',\n  error_message: error.execution?.error?.message || 'Unknown error',\n  timestamp: new Date().toISOString(),\n  execution_id: error.execution?.id || '',\n  formatted: `⚠️ **SOC WORKFLOW ERROR**\\n` +\n    `**Node:** ${error.execution?.lastNodeExecuted || 'Unknown'}\\n` +\n    `**Error:** ${(error.execution?.error?.message || 'Unknown error').substring(0, 300)}\\n` +\n    `**Time:** ${new Date().toISOString()}\\n` +\n    `**Execution:** ${error.execution?.id || 'N/A'}\\n` +\n    `\\nCheck n8n execution log for details.`\n};\n\nreturn { json: errorReport };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2272,
+        2320
+      ],
+      "id": "40600d00-46e3-4c67-920f-4832fb69bda3",
+      "name": "Format Error Report"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "={{ $json.formatted }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        -2032,
+        2320
+      ],
+      "id": "2e848949-a6bf-4e04-98e3-013254f425d1",
+      "name": "🚨 Error to Discord",
+      "webhookId": "868de50e-bb6b-41cd-a581-f748f67d6559"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1392,
+        1648
+      ],
+      "id": "3da6de37-6834-4bf5-93c4-39760f699ad0",
+      "name": "Merge Enrichment"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2544,
+        1280
+      ],
+      "id": "e05e4150-2724-4dd2-beb9-25711cbae27e",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\nconst location = input.body._original?.full_alert?.location || input.body?.location || \"\";\nconst srcip = input.body.data?.srcip || input.srcip;\n\nlet command = \"\";\n\nif (location.startsWith('/')) {\n  // It's a file path\n  if (srcip) {\n    command = `tail -n 200 \"${location}\" 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 \"${location}\" 2>/dev/null`;\n  } else {\n    command = `tail -n 100 \"${location}\" 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('journald') || location === 'systemd-journal') {\n  // It's journald\n  if (srcip) {\n    command = `journalctl -n 500 --no-pager 2>/dev/null | grep \"${srcip}\" | head -n 100 || journalctl -n 200 --no-pager 2>/dev/null`;\n  } else {\n    command = `journalctl -n 200 --no-pager 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('syslog')) {\n  // It's syslog\n  if (srcip) {\n    command = `tail -n 200 /var/log/syslog 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/syslog 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/syslog 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('auth')) {\n  // It's auth logs (Debian/Ubuntu uses auth.log, RHEL/CentOS uses secure)\n  if (srcip) {\n    command = `tail -n 200 /var/log/auth.log 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 200 /var/log/secure 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/auth.log /var/log/secure 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/auth.log 2>/dev/null || tail -n 100 /var/log/secure 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('apache') || location.toLowerCase().includes('httpd')) {\n  // Apache logs\n  if (srcip) {\n    command = `tail -n 200 /var/log/apache2/access.log /var/log/httpd/access_log 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/apache2/error.log /var/log/httpd/error_log 2>/dev/null | grep \"${srcip}\" || echo \"Apache logs not found\"`;\n  } else {\n    command = `tail -n 100 /var/log/apache2/access.log /var/log/httpd/access_log 2>/dev/null || echo \"Apache logs not found\"`;\n  }\n  \n} else if (location.toLowerCase().includes('nginx')) {\n  // Nginx logs\n  if (srcip) {\n    command = `tail -n 200 /var/log/nginx/access.log 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/nginx/access.log 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/nginx/access.log 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('mysql') || location.toLowerCase().includes('mariadb')) {\n  // MySQL/MariaDB logs\n  if (srcip) {\n    command = `tail -n 200 /var/log/mysql/error.log 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/mysql/error.log 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/mysql/error.log 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('postgresql') || location.toLowerCase().includes('postgres')) {\n  // PostgreSQL logs\n  if (srcip) {\n    command = `tail -n 200 /var/log/postgresql/*.log 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/postgresql/*.log 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/postgresql/*.log 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('audit')) {\n  // Audit logs\n  if (srcip) {\n    command = `ausearch -i 2>/dev/null | grep \"${srcip}\" | head -n 100 || tail -n 100 /var/log/audit/audit.log 2>/dev/null | grep \"${srcip}\" || tail -n 100 /var/log/audit/audit.log 2>/dev/null`;\n  } else {\n    command = `tail -n 100 /var/log/audit/audit.log 2>/dev/null`;\n  }\n  \n} else if (location.toLowerCase().includes('kern') || location.toLowerCase().includes('kernel')) {\n  // Kernel logs\n  if (srcip) {\n    command = `dmesg -T 2>/dev/null | grep \"${srcip}\" | tail -n 100 || journalctl -k -n 200 --no-pager 2>/dev/null | grep \"${srcip}\" | head -n 100`;\n  } else {\n    command = `dmesg -T 2>/dev/null | tail -n 100 || journalctl -k -n 100 --no-pager 2>/dev/null`;\n  }\n  \n} else {\n  // Default: try common log locations\n  if (srcip) {\n    command = `\necho \"=== Checking Auth Logs ===\" && (tail -n 100 /var/log/auth.log 2>/dev/null | grep \"${srcip}\" | head -n 50 || tail -n 100 /var/log/secure 2>/dev/null | grep \"${srcip}\" | head -n 50) && \\\necho \"=== Checking Syslog ===\" && tail -n 100 /var/log/syslog 2>/dev/null | grep \"${srcip}\" | head -n 50 && \\\necho \"=== Checking Journald ===\" && journalctl -n 200 --no-pager 2>/dev/null | grep \"${srcip}\" | head -n 50 || \\\necho \"Location: ${location} - No specific handler, checked common logs\"\n    `.trim();\n  } else {\n    command = `tail -n 50 /var/log/auth.log /var/log/secure /var/log/syslog 2>/dev/null | head -n 100 || journalctl -n 100 --no-pager 2>/dev/null`;\n  }\n}\n\nreturn {\n  json: {\n    ...input,\n    ssh_command: command,\n    command_type: \"bash\",\n    location_type: location.startsWith('/') ? 'file_path' : 'log_source',\n    original_location: location,\n    target_ip: srcip || \"none\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        1360
+      ],
+      "id": "99825e1f-315b-4d94-829c-dc15c860fd63",
+      "name": "Prepare SSH Log Command For Linux Endpoints"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-soc-analyst-l1-alerts",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2560,
+        1312
+      ],
+      "id": "4103b34e-4498-4710-9dc1-b2638579a680",
+      "name": "Webhook",
+      "alwaysOutputData": false
+    }
+  ],
+  "connections": {
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: SOC Incident Report",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n-VM": {
+      "main": [
+        [
+          {
+            "node": "Last 100 Log lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal IP Check": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🧩 Combine Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last 100 Log lines": {
+      "main": [
+        [
+          {
+            "node": "AI: Summarize Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Summarize Logs": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Data For Report": {
+      "main": [
+        [
+          {
+            "node": "AI: SOC Incident Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: SOC Incident Report": {
+      "main": [
+        [
+          {
+            "node": "📢 Notification Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI: SOC Incident Report",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Normalize Alert Data1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Alert Data1": {
+      "main": [
+        [
+          {
+            "node": "Prepare SSH Log Command For Linux Endpoints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect OS Name": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🔍 AbuseIPDB Check",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "VirusTotal IP Check",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Discord1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "🛡️ Whitelist Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Dedup / Cooldown": {
+      "main": [
+        [
+          {
+            "node": "🚦 Dedup Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚦 Dedup Filter": {
+      "main": [
+        [
+          {
+            "node": "Detect OS Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 AbuseIPDB Check": {
+      "main": [
+        [
+          {
+            "node": "🧩 Combine Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🛡️ Whitelist Check": {
+      "main": [
+        [
+          {
+            "node": "Should Block IP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Block IP?": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "📢 Notification Router": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📨 Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚠️ Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Report": {
+      "main": [
+        [
+          {
+            "node": "🚨 Error to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIGURATION": {
+      "main": [
+        [
+          {
+            "node": "🛡️ Input Sanitization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🛡️ Input Sanitization": {
+      "main": [
+        [
+          {
+            "node": "🔄 Dedup / Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧩 Combine Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Merge Enrichment",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Combine Data For Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare SSH Log Command For Linux Endpoints": {
+      "main": [
+        [
+          {
+            "node": "Last 100 Log lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "⚙️ CONFIGURATION",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  }
+}

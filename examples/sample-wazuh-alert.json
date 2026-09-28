@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-01-01T00:00:00.000Z",
+  "rule": {"id": "5710", "level": 10, "description": "Synthetic repeated authentication failure"},
+  "agent": {"id": "001", "name": "lab-endpoint", "ip": "198.51.100.20"},
+  "data": {"srcip": "203.0.113.25", "srcport": "54321", "dstport": "22", "protocol": "tcp"},
+  "mitre": {"id": ["T1110"], "tactic": ["Credential Access"], "technique": ["Brute Force"]}
+}
