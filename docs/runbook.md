@@ -1,5 +1,9 @@
 # Lab setup and runbook
 
+![AI-SOAR n8n workflow](../images/ai-soar-workflow.svg)
+
+*Import the redacted workflow only into an isolated lab; automatic UFW action is omitted.*
+
 ## Prerequisites
 
 - An isolated Ubuntu endpoint with Wazuh Agent and test logs.

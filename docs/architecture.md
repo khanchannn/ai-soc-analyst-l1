@@ -1,5 +1,9 @@
 # Architecture and trust boundaries
 
+![AI-SOAR system architecture](../images/ai-soar-system-architecture.svg)
+
+*The public reference keeps reputation lookups at the external boundary and leaves automated response disabled.*
+
 ## Processing flow
 
 1. Wazuh detects events and remains authoritative for original alert fields and evidence.

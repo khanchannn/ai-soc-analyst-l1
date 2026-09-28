@@ -19,15 +19,14 @@ Wazuh remains the source of detection evidence. Threat-intelligence results are 
 
 See [the architecture and trust boundaries](docs/architecture.md), [the setup notes](docs/runbook.md), and [the safety review](docs/safety-review.md). The public project story is also available in the [portfolio article](https://khanchannn.github.io/dulkanggg/post/ai-soc-analyst-l1/).
 
-```mermaid
-flowchart LR
-  E[Linux endpoint + Wazuh Agent] --> W[Wazuh Manager / Indexer]
-  W -->|selected alert| N[n8n orchestration]
-  N -->|source IP only| TI[VirusTotal + AbuseIPDB]
-  N -->|bounded logs| O[Local Ollama + Qwen3:8B]
-  N -->|redacted report| A[Analyst notifications]
-  N -.->|no action in public export| X[UFW containment disabled]
-```
+![AI-SOAR system architecture](images/ai-soar-system-architecture.svg)
+
+*System architecture. Automated UFW containment is disabled in the public reference.*
+
+![AI-SOAR n8n workflow](images/ai-soar-workflow.svg)
+
+*n8n workflow overview. The public export has no firewall execution node.*
+
 
 ## Quick start
 
